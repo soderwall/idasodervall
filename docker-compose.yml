@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  # 1. PocketBase Backend & Admin UI
+  pocketbase:
+    image: ghcr.io/muchweb/pocketbase:latest
+    container_name: art_shop_pocketbase
+    restart: unless-stopped
+    command: pocketbase serve --http=0.0.0.0:8090
+    volumes:
+      - ./pb_data:/pb_data
+    networks:
+      - art-shop-network
+    # Expose port locally optional for debugging on NAS LAN if needed:
+    # ports:
+    #   - "8090:8090"
+
+  # 2. Next.js Frontend Web Application
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: art_shop_frontend
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - POCKETBASE_URL=http://pocketbase:8090
+      - NEXT_PUBLIC_SITE_URL=${SITE_URL:-https://idasodervall.se}
+    depends_on:
+      - pocketbase
+    networks:
+      - art-shop-network
+    # Port is routed internally via cloudflared. Un-comment if local access is desired:
+    # ports:
+    #   - "3000:3000"
+
+  # 3. Cloudflare Tunnel
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: art_shop_cloudflared
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run
+    environment:
+      - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+    depends_on:
+      - frontend
+      - pocketbase
+    networks:
+      - art-shop-network
+
+networks:
+  art-shop-network:
+    name: art-shop-network
+    driver: bridge
